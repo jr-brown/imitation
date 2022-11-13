@@ -1041,9 +1041,11 @@ def _trajectory_pair_includes_reward(fragment_pair: TrajectoryPair) -> bool:
 class CrossEntropyRewardLoss(RewardLoss):
     """Compute the cross entropy reward loss."""
 
-    def __init__(self) -> None:
+    def __init__(self, store_sampled_probs: bool=False) -> None:
         """Create cross entropy reward loss."""
         super().__init__()
+        self.store_sampled_probs = store_sampled_probs
+        self.sampled_probs: list[tuple[th.Tensor, th.Tensor]] = []
 
     def forward(
         self,
@@ -1066,6 +1068,8 @@ class CrossEntropyRewardLoss(RewardLoss):
                 available.
         """
         probs, gt_probs = preference_model(fragment_pairs)
+        if self.store_sampled_probs:
+            self.sampled_probs.append((probs, gt_probs))
         # TODO(ejnnr): Here and below, > 0.5 is problematic
         #  because getting exactly 0.5 is actually somewhat
         #  common in some environments (as long as sample=False or temperature=0).
