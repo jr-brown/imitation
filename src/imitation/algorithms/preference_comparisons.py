@@ -31,6 +31,7 @@ from stable_baselines3.common import base_class, type_aliases, utils, vec_env
 from torch import nn
 from torch.utils import data as data_th
 from tqdm.auto import tqdm
+from absl import logging
 
 from imitation.algorithms import base
 from imitation.data import rollout, types, wrappers
@@ -783,6 +784,7 @@ class PreferenceGatherer(abc.ABC):
         self,
         rng: Optional[np.random.Generator] = None,
         custom_logger: Optional[imit_logger.HierarchicalLogger] = None,
+        store_probs_and_prefs: bool=False,
     ) -> None:
         """Initializes the preference gatherer.
 
@@ -796,6 +798,9 @@ class PreferenceGatherer(abc.ABC):
         # the PreferenceGatherer we use needs one).
         del rng
         self.logger = custom_logger or imit_logger.configure()
+        self.store_probs_and_prefs = store_probs_and_prefs
+        self.raw_probs: list[np.ndarray] = []
+        self.prefs: list[np.ndarray] = []
 
     @abc.abstractmethod
     def __call__(self, fragment_pairs: Sequence[TrajectoryWithRewPair]) -> np.ndarray:
@@ -827,6 +832,7 @@ class SyntheticGatherer(PreferenceGatherer):
         rng: Optional[np.random.Generator] = None,
         threshold: float = 50,
         custom_logger: Optional[imit_logger.HierarchicalLogger] = None,
+        store_probs_and_prefs: bool=False,
     ) -> None:
         """Initialize the synthetic preference gatherer.
 
@@ -853,7 +859,7 @@ class SyntheticGatherer(PreferenceGatherer):
         Raises:
             ValueError: if `sample` is true and no random state is provided.
         """
-        super().__init__(custom_logger=custom_logger)
+        super().__init__(custom_logger=custom_logger, store_probs_and_prefs=store_probs_and_prefs)
         self.temperature = temperature
         self.discount_factor = discount_factor
         self.sample = sample
@@ -866,8 +872,13 @@ class SyntheticGatherer(PreferenceGatherer):
     def __call__(self, fragment_pairs: Sequence[TrajectoryWithRewPair]) -> np.ndarray:
         """Computes probability fragment 1 is preferred over fragment 2."""
         returns1, returns2 = self._reward_sums(fragment_pairs)
+
         if self.temperature == 0:
-            return (np.sign(returns1 - returns2) + 1) / 2
+            result = (np.sign(returns1 - returns2) + 1) / 2
+            if self.store_probs_and_prefs:
+                self.raw_probs.append(result)
+                self.prefs.append(result)
+            return result
 
         returns1 /= self.temperature
         returns2 /= self.temperature
@@ -888,8 +899,15 @@ class SyntheticGatherer(PreferenceGatherer):
 
         if self.sample:
             assert self.rng is not None
-            return self.rng.binomial(n=1, p=model_probs).astype(np.float32)
-        return model_probs
+            prefs = self.rng.binomial(n=1, p=model_probs).astype(np.float32)
+        else:
+            prefs = model_probs
+
+        if self.store_probs_and_prefs:
+            self.raw_probs.append(model_probs)
+            self.prefs.append(prefs)
+
+        return prefs
 
     def _reward_sums(self, fragment_pairs) -> Tuple[np.ndarray, np.ndarray]:
         rews1, rews2 = zip(
@@ -1041,11 +1059,14 @@ def _trajectory_pair_includes_reward(fragment_pair: TrajectoryPair) -> bool:
 class CrossEntropyRewardLoss(RewardLoss):
     """Compute the cross entropy reward loss."""
 
-    def __init__(self, store_sampled_probs: bool=False) -> None:
+    def __init__(self, store_sampled_probs: bool=False, max_sampled_probs: Optional[int]=None
+                 ) -> None:
         """Create cross entropy reward loss."""
         super().__init__()
         self.store_sampled_probs = store_sampled_probs
-        self.sampled_probs: list[tuple[th.Tensor, th.Tensor]] = []
+        self.max_sampled_probs = max_sampled_probs
+        self.sampled_probs: list[th.Tensor] = []
+        self.num_times_halved_samples = 0
 
     def forward(
         self,
@@ -1069,7 +1090,17 @@ class CrossEntropyRewardLoss(RewardLoss):
         """
         probs, gt_probs = preference_model(fragment_pairs)
         if self.store_sampled_probs:
-            self.sampled_probs.append((probs, gt_probs))
+            self.sampled_probs.append((probs[::2**self.num_times_halved_samples]))
+            if self.max_sampled_probs is not None:
+                counts = [len(x) for x in self.sampled_probs]
+                # print(sum(counts), len(counts), counts[0], counts[-1])
+                if sum(counts) > self.max_sampled_probs:
+                    if len(self.sampled_probs[0]) <= 1:
+                        logging.warning("Each batch is at 1 sample, cannot halve, exceeding max number")
+                    else:
+                        self.num_times_halved_samples += 1
+                        logging.info(f"Halving number of stored samples in reward loss, total {self.num_times_halved_samples} times")
+                        self.sampled_probs = [x[::2] for x in self.sampled_probs]
         # TODO(ejnnr): Here and below, > 0.5 is problematic
         #  because getting exactly 0.5 is actually somewhat
         #  common in some environments (as long as sample=False or temperature=0).
