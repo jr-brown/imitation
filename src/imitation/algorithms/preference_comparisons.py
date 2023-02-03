@@ -1693,6 +1693,7 @@ class PreferenceComparisons(base.BaseImitationAlgorithm):
         total_timesteps: int,
         total_comparisons: int,
         callback: Optional[Callable[[int], None]] = None,
+        agent_trainer_kwargs: Optional[dict[str, Any]] = None,
     ) -> Mapping[str, Any]:
         """Train the reward model and the policy if applicable.
 
@@ -1705,6 +1706,9 @@ class PreferenceComparisons(base.BaseImitationAlgorithm):
             A dictionary with final metrics such as loss and accuracy
             of the reward model.
         """
+        if agent_trainer_kwargs is None:
+            agent_trainer_kwargs = {}
+
         initial_comparisons = int(total_comparisons * self.initial_comparison_frac)
         total_comparisons -= initial_comparisons
 
@@ -1774,7 +1778,7 @@ class PreferenceComparisons(base.BaseImitationAlgorithm):
                 num_steps += extra_timesteps
             with self.logger.accumulate_means("agent"):
                 self.logger.log(f"Training agent for {num_steps} timesteps")
-                self.trajectory_generator.train(steps=num_steps)
+                self.trajectory_generator.train(steps=num_steps, **agent_trainer_kwargs)
 
             self.logger.dump(self._iteration)
 
