@@ -222,10 +222,22 @@ class AgentTrainer(TrajectoryGenerator):
                 f"There are {n_transitions} transitions left in the buffer. "
                 "Call AgentTrainer.sample() first to clear them.",
             )
+
+        # Add any other callbacks given to method
+        callbacks = [self.log_callback]
+
+        if "callback" in kwargs.keys():
+            new_callback = kwargs["callback"]
+            del kwargs["callback"]
+            if isinstance(new_callback, list):
+                callbacks.extend(new_callback)
+            else:
+                callbacks.append(new_callback)
+
         self.algorithm.learn(
             total_timesteps=steps,
             reset_num_timesteps=False,
-            callback=self.log_callback,
+            callback=callbacks,  # type: ignore
             **kwargs,
         )
 
