@@ -16,7 +16,8 @@ set -e  # Exit on error.
 source experiments/common.sh
 
 CONFIG_CSV=${CONFIG_CSV:-experiments/rollouts_from_policies_config.csv}
-OUTPUT_DIR="output/train_experts/${TIMESTAMP}"
+# To prevent race conditions, we use a different output dir for each process id.
+OUTPUT_DIR="output/train_experts/${TIMESTAMP}-${BASHPID}"
 
 if ! TEMP=$($GNU_GETOPT -o f -l fast -- "$@"); then
   exit 1
@@ -48,7 +49,7 @@ parallel -j 25% --header : --results "${OUTPUT_DIR}/parallel/" --colsep , \
   --capture=sys \
   with \
   '{env_config_name}' \
-  common.log_root="${OUTPUT_DIR}" \
+  logging.log_root="${OUTPUT_DIR}" \
   rollout_save_path="${OUTPUT_DIR}/expert_models/{env_config_name}_0/rollouts/final.npz" \
   eval_n_episodes='{n_demonstrations}' \
   eval_n_timesteps=None \

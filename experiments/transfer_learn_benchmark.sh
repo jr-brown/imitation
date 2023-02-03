@@ -8,7 +8,8 @@ source experiments/common.sh
 SEEDS=(0 1 2)
 CONFIG_CSV="experiments/imit_benchmark_config.csv"
 REWARD_MODELS_DIR="data/reward_models"
-LOG_ROOT="output/train_experts/${TIMESTAMP}"
+# To prevent race conditions, we use a different log root for each process id.
+LOG_ROOT="output/train_experts/${TIMESTAMP}-${BASHPID}"
 RESULTS_FILE="results.txt"
 ALGORITHM="gail"
 NEED_TEST_FILES="false"
@@ -28,12 +29,12 @@ while true; do
       REWARD_MODELS_DIR="tests/testdata/reward_models"
       NEED_TEST_FILES="true"
       SEEDS=(0)
-      extra_configs=("${extra_configs[@]}" common.fast rl.fast train.fast fast)
+      extra_configs=("${extra_configs[@]}" environment.fast rl.fast train.fast fast)
       shift
       ;;
     -w | --wandb)
-      # activate wandb logging by adding 'wandb' format string to common.log_format_strs
-      extra_configs=("${extra_configs[@]}" "common.wandb_logging")
+      # activate wandb logging by adding 'wandb' format string to logging.log_format_strs
+      extra_configs=("${extra_configs[@]}" "logging.wandb_logging")
       shift
       ;;
     --gail)
@@ -67,15 +68,16 @@ done
 
 if [[ $NEED_TEST_FILES == "true" ]]; then
   # Generate quick reward models for test.
-  save_dir=tests/testdata/reward_models/${ALGORITHM}
+  # To prevent race conditions, we use a different save_dir for each process id.
+  save_dir=tests/testdata/reward_models/${ALGORITHM}/${TIMESTAMP}-${BASHPID}
 
   # Wipe directories for writing later.
   if [[ -d ${save_dir} ]]; then
-    rm -r ${save_dir}
+    rm -r "${save_dir}"
   fi
-  mkdir -p ${save_dir}
+  mkdir -p "${save_dir}"
 
-  experiments/imit_benchmark.sh -f --${ALGORITHM} --log_root ${save_dir}
+  experiments/imit_benchmark.sh -f --${ALGORITHM} --log_root "${save_dir}"
 fi
 
 
@@ -86,9 +88,9 @@ parallel -j 25% --header : --results "${LOG_ROOT}/parallel/" --colsep , --progre
   "${extra_options[@]}" \
   with \
   '{env_config_name}' seed='{seed}' \
-  common.log_dir="${LOG_ROOT}/${ALGORITHM}/{env_config_name}_{seed}/n_expert_demos_{n_expert_demos}" \
+  logging.log_dir="${LOG_ROOT}/${ALGORITHM}/{env_config_name}_{seed}/n_expert_demos_{n_expert_demos}" \
   reward_type="RewardNet_unshaped" \
-  reward_path="${REWARD_MODELS_DIR}/${ALGORITHM}/{env_config_name}_0/n_expert_demos_{n_expert_demos}/checkpoints/final/reward_test.pt" \
+  reward_path="${REWARD_MODELS_DIR}/${ALGORITHM}/${TIMESTAMP}-${BASHPID}/{env_config_name}_0/n_expert_demos_{n_expert_demos}/checkpoints/final/reward_test.pt" \
   "${extra_configs[@]}" \
   :::: ${CONFIG_CSV} \
   ::: seed "${SEEDS[@]}"

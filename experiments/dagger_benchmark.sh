@@ -4,7 +4,8 @@ source experiments/common.sh
 
 ENVS=(seals_cartpole)
 SEEDS=(0 1 2 3 4)
-LOG_ROOT="output/dagger_benchmark/${TIMESTAMP}"
+# To prevent race conditions, we use a different log root for each process id.
+LOG_ROOT="output/dagger_benchmark/${TIMESTAMP}-${BASHPID}"
 extra_configs=()
 extra_options=()
 extra_parallel_options=()
@@ -19,7 +20,7 @@ while true; do
     # Fast mode (debug)
     -f | --fast)
       SEEDS=(0)
-      extra_configs=("${extra_configs[@]}" common.fast demonstrations.fast train.fast fast)
+      extra_configs=("${extra_configs[@]}" environment.fast demonstrations.fast train.fast fast)
       shift
       ;;
     --paper)  # Table benchmark settings
@@ -27,8 +28,8 @@ while true; do
       shift
       ;;
     -w | --wandb)
-      # activate wandb logging by adding 'wandb' format string to common.log_format_strs
-      extra_configs=("${extra_configs[@]}" "common.wandb_logging")
+      # activate wandb logging by adding 'wandb' format string to logging.log_format_strs
+      extra_configs=("${extra_configs[@]}" "logging.wandb_logging")
       shift
       ;;
     -T | --tmux)
@@ -83,7 +84,7 @@ parallel -j 25% --header : --results "${LOG_ROOT}/parallel/" --colsep , --progre
   dagger \
   with \
   '{env_config_name}' \
-  common.log_dir="${LOG_ROOT}/{env_config_name}_{seed}" \
+  logging.log_dir="${LOG_ROOT}/{env_config_name}_{seed}" \
   dagger.expert_policy_type='ppo' \
   seed='{seed}' \
   "${extra_configs[@]}" \

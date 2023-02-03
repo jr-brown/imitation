@@ -14,9 +14,10 @@ from imitation.algorithms.adversarial import common
 from imitation.algorithms.adversarial import gail as gail_algo
 from imitation.data import rollout
 from imitation.policies import serialize
-from imitation.scripts.common import common as common_config
-from imitation.scripts.common import demonstrations, reward, rl, train
 from imitation.scripts.config.train_adversarial import train_adversarial_ex
+from imitation.scripts.ingredients import demonstrations, environment
+from imitation.scripts.ingredients import logging as logging_ingredient
+from imitation.scripts.ingredients import reward, rl, train
 
 logger = logging.getLogger("imitation.scripts.train_adversarial")
 
@@ -105,15 +106,20 @@ def train_adversarial(
         "monitor_return" key). "expert_stats" gives the return value of
         `rollout_stats()` on the expert demonstrations.
     """
+    # This allows to specify total_timesteps and checkpoint_interval in scientific
+    # notation, which is interpreted as a float by python.
+    total_timesteps = int(total_timesteps)
+    checkpoint_interval = int(checkpoint_interval)
+
     if show_config:
         # Running `train_adversarial print_config` will show unmerged config.
         # So, support showing merged config from `train_adversarial {airl,gail}`.
         sacred.commands.print_config(_run)
 
-    custom_logger, log_dir = common_config.setup_logging()
+    custom_logger, log_dir = logging_ingredient.setup_logging()
     expert_trajs = demonstrations.get_expert_trajectories()
 
-    with common_config.make_venv() as venv:
+    with environment.make_venv() as venv:
         reward_net = reward.make_reward_net(venv)
         relabel_reward_fn = functools.partial(
             reward_net.predict_processed,

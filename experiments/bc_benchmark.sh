@@ -11,7 +11,8 @@ source experiments/common.sh
 
 ENVS=(seals_cartpole)
 SEEDS=(0 1 2)
-OUTPUT_DIR="output/bc_benchmark/${TIMESTAMP}"
+# To prevent race conditions, we use a different output dir for each process id.
+OUTPUT_DIR="output/bc_benchmark/${TIMESTAMP}-${BASHPID}"
 extra_configs=()
 extra_options=()
 extra_parallel_options=()
@@ -26,7 +27,7 @@ while true; do
     -f | --fast)
       # Fast mode (debug)
       SEEDS=(0)
-      extra_configs=("${extra_configs[@]}" common.fast demonstrations.fast train.fast fast)
+      extra_configs=("${extra_configs[@]}" environment.fast demonstrations.fast train.fast fast)
       shift
       ;;
     --paper)  # Table benchmark settings
@@ -34,8 +35,8 @@ while true; do
       shift
       ;;
     -w | --wandb)
-      # activate wandb logging by adding 'wandb' format string to common.log_format_strs
-      extra_configs=("${extra_configs[@]}" "common.wandb_logging")
+      # activate wandb logging by adding 'wandb' format string to logging.log_format_strs
+      extra_configs=("${extra_configs[@]}" "logging.wandb_logging")
       shift
       ;;
     --run_name)
@@ -69,6 +70,6 @@ parallel -j 25% --header : --results "${OUTPUT_DIR}/parallel/" --colsep , --prog
   '{env_config_name}' \
   "${extra_configs[@]}" \
   'seed={seed}' \
-  common.log_root="${OUTPUT_DIR}" \
+  logging.log_root="${OUTPUT_DIR}" \
   ::: env_config_name "${ENVS[@]}" \
   ::: seed "${SEEDS[@]}"

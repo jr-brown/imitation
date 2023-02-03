@@ -11,7 +11,8 @@ source experiments/common.sh
 
 SEEDS=(0 1 2 3 4)
 CONFIG_CSV="experiments/imit_benchmark_config.csv"
-LOG_ROOT="output/imit_benchmark/${TIMESTAMP}"
+# To prevent race conditions, we use a different log root for each process id.
+LOG_ROOT="output/imit_benchmark/${TIMESTAMP}-${BASHPID}"
 extra_configs=()
 extra_options=()
 extra_parallel_options=()
@@ -28,12 +29,12 @@ while true; do
     -f | --fast)
       CONFIG_CSV="tests/testdata/imit_benchmark_config.csv"
       SEEDS=(0)
-      extra_configs=("${extra_configs[@]}" common.fast demonstrations.fast rl.fast train.fast fast)
+      extra_configs=("${extra_configs[@]}" environment.fast demonstrations.fast rl.fast train.fast fast)
       shift
       ;;
     -w | --wandb)
-      # activate wandb logging by adding 'wandb' format string to common.log_format_strs
-      extra_configs=("${extra_configs[@]}" "common.wandb_logging")
+      # activate wandb logging by adding 'wandb' format string to logging.log_format_strs
+      extra_configs=("${extra_configs[@]}" "logging.wandb_logging")
       shift
       ;;
     --mvp_seals)
@@ -104,7 +105,7 @@ parallel -j 25% --header : --results "${LOG_ROOT}/parallel/" --colsep , --progre
   "${ALGORITHM}" \
   with \
   '{env_config_name}' seed='{seed}' \
-  common.log_dir="${LOG_ROOT}/{env_config_name}_{seed}/n_expert_demos_{n_expert_demos}" \
+  logging.log_dir="${LOG_ROOT}/{env_config_name}_{seed}/n_expert_demos_{n_expert_demos}" \
   demonstrations.n_expert_demos='{n_expert_demos}' \
   checkpoint_interval=0 \
   "${extra_configs[@]}" \
